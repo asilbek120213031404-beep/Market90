@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /login
+Disallow: /add-product
+Disallow: /edited
+Disallow: /profile
+
+Allow: /products
+
+Sitemap: https://market90.uz/sitemap.xml

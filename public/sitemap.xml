@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <!--
+    MARKET90 - Sitemap
+    Barcha sahifalar login talab qiladi (SPA).
+    Rollar: ega > pro_admin > admin > mehmon
+  -->
+
+  <!-- Login sahifasi (ochiq) -->
+  <url>
+    <loc>https://market90.uz/login</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Mahsulotlar ro'yxati (barcha login bo'lganlar) -->
+  <url>
+    <loc>https://market90.uz/products</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Profil sahifasi (barcha login bo'lganlar) -->
+  <url>
+    <loc>https://market90.uz/profile</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Mahsulot qo'shish (ega, pro_admin) -->
+  <url>
+    <loc>https://market90.uz/add-product</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Tahrirlangan mahsulotlar (ega, pro_admin, admin) -->
+  <url>
+    <loc>https://market90.uz/edited</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+</urlset>
