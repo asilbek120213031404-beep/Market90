@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           .from("profiles")
           .upsert({
             id: userId,
-            full_name: userMeta.full_name ?? null,
+            full_name: userMeta.full_name ?? "",
             email: userMeta.email ?? null,
             role: "mehmon",
           }, { onConflict: "id" })
