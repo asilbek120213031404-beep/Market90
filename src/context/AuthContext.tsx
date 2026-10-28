@@ -119,8 +119,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setProfile(null);
   };
 
-  console.log(user)
-
   return (
     <AuthContext.Provider
       value={{
