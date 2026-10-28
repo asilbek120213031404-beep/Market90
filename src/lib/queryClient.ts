@@ -16,5 +16,9 @@ export const queryKeys = {
   productsAll: ["products"] as const,
   users: ["users"] as const,
   categories: ["categories"] as const,
+  productHistory: (productId: string) => ["product-history", productId] as const,
+  productHistoryAll: ["product-history"] as const,
+  recentHistory: ["product-history", "recent"] as const,
+  adminActivity: ["admin-activity"] as const,
 };
 

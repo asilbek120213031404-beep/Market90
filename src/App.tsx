@@ -1,18 +1,29 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Header from "./components/Header";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import HomePage from "./pages/HomePage";
-import AddProductPage from "./pages/AddProductPage";
-import LoginPage from "./pages/LoginPage";
-import EditedPage from "./pages/EditedPage";
-import ProfilePage from "./pages/ProfilePage";
+import { useRealtimeSync } from "./hooks/useRealtimeSync";
 import type { UserRole } from "./data/products";
+
+/* ─── Sahifalar alohida bo'laklarda yuklanadi (lazy loading) ─── */
+const HomePage = lazy(() => import("./pages/HomePage"));
+const AddProductPage = lazy(() => import("./pages/AddProductPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const EditedPage = lazy(() => import("./pages/EditedPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 /* ─── Loading spinner ─── */
 const FullPageSpinner = () => (
-  <div className="fixed inset-0 flex items-center justify-center bg-gray-950">
+  <div className="fixed inset-0 flex items-center justify-center bg-slate-50 dark:bg-gray-950">
     <div className="w-9 h-9 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
+
+const PageSpinner = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
@@ -48,6 +59,13 @@ const Guard = ({
   return <>{children}</>;
 };
 
+/* ─── Boshqa foydalanuvchilarning o'zgarishlarini jonli kuzatish ─── */
+const RealtimeSync = () => {
+  const { user } = useAuth();
+  useRealtimeSync(!!user);
+  return null;
+};
+
 const AppContent = () => {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -58,50 +76,60 @@ const AppContent = () => {
         isDark ? "bg-gray-950 text-white" : "bg-slate-50 text-gray-800"
       }`}
     >
-      <Routes>
-        {/* Login — header yo'q, auth shart emas */}
-        <Route path="/login" element={<LoginPage />} />
+      <Suspense fallback={<FullPageSpinner />}>
+        <Routes>
+          {/* Login — header yo'q, auth shart emas */}
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Asosiy app — header bilan, login shart */}
-        <Route
-          path="/*"
-          element={
-            <RequireAuth>
-              <>
-                <Header />
-                <PageTransition>
-                  <Routes>
-                    {/* Barcha loginli foydalanuvchilar */}
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/products" element={<HomePage />} />
-                    <Route path="/profile" element={<ProfilePage />} />
+          {/* Asosiy app — header bilan, login shart */}
+          <Route
+            path="/*"
+            element={
+              <RequireAuth>
+                <>
+                  <RealtimeSync />
+                  <Header />
+                  <PageTransition>
+                    <Suspense fallback={<PageSpinner />}>
+                      <Routes>
+                        {/* Barcha loginli foydalanuvchilar */}
+                        <Route path="/" element={<HomePage />} />
+                        <Route path="/products" element={<HomePage />} />
+                        <Route path="/profile" element={<ProfilePage />} />
 
-                    {/* Faqat ega va pro_admin */}
-                    <Route
-                      path="/add-product"
-                      element={
-                        <Guard allowed={["ega", "pro_admin"]}>
-                          <AddProductPage />
-                        </Guard>
-                      }
-                    />
+                        {/* Faqat ega va pro_admin */}
+                        <Route
+                          path="/add-product"
+                          element={
+                            <Guard allowed={["ega", "pro_admin"]}>
+                              <AddProductPage />
+                            </Guard>
+                          }
+                        />
 
-                    {/* Faqat ega, pro_admin, admin */}
-                    <Route
-                      path="/edited"
-                      element={
-                        <Guard allowed={["ega", "pro_admin", "admin"]}>
-                          <EditedPage />
-                        </Guard>
-                      }
-                    />
-                  </Routes>
-                </PageTransition>
-              </>
-            </RequireAuth>
-          }
-        />
-      </Routes>
+                        {/* Faqat ega, pro_admin, admin */}
+                        <Route
+                          path="/edited"
+                          element={
+                            <Guard allowed={["ega", "pro_admin", "admin"]}>
+                              <EditedPage />
+                            </Guard>
+                          }
+                        />
+
+                        {/* Statistika endi ega profilida — eski havolalar uchun */}
+                        <Route path="/dashboard" element={<Navigate to="/profile?tab=stats" replace />} />
+
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </Suspense>
+                  </PageTransition>
+                </>
+              </RequireAuth>
+            }
+          />
+        </Routes>
+      </Suspense>
     </div>
   );
 };
@@ -119,4 +147,3 @@ function App() {
 }
 
 export default App;
-

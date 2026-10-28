@@ -1,8 +1,16 @@
-import { useState } from "react";
-import { Tag, Plus, Trash2, X, Loader2, AlertTriangle, Check } from "lucide-react";
-import { useCategories, useCreateCategory, useDeleteCategory } from "../../hooks/useCategories";
-
-type Toast = { type: "success" | "error"; msg: string };
+import { useMemo, useState } from "react";
+import { Tag, Plus, Trash2, X, Loader2, AlertTriangle, Check, Pencil } from "lucide-react";
+import {
+  useCategories,
+  useCreateCategory,
+  useDeleteCategory,
+  useRenameCategory,
+  type Category,
+} from "../../hooks/useCategories";
+import { useStaffProducts } from "../../hooks/useProducts";
+import { useToast } from "../../hooks/useToast";
+import { useEscape } from "../../hooks/useEscape";
+import ConfirmDialog from "../ConfirmDialog";
 
 const ManageCategoriesModal = ({
   isDark,
@@ -12,21 +20,32 @@ const ManageCategoriesModal = ({
   onClose: () => void;
 }) => {
   const { data: categories = [], isPending, error } = useCategories();
+  const { products } = useStaffProducts();
   const createCategory = useCreateCategory();
+  const renameCategory = useRenameCategory();
   const deleteCategory = useDeleteCategory();
+  const { toast, showToast } = useToast();
 
   const [newName, setNewName] = useState("");
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [editing, setEditing] = useState<{ id: number; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<Category | null>(null);
 
-  const showToast = (t: Toast) => {
-    setToast(t);
-    setTimeout(() => setToast(null), 3000);
-  };
+  useEscape(() => (editing ? setEditing(null) : onClose()), !deleting);
+
+  // Har bir kategoriyadagi mahsulotlar soni
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of products) m.set(p.category, (m.get(p.category) ?? 0) + 1);
+    return m;
+  }, [products]);
+
+  const exists = (name: string, exceptId?: number) =>
+    categories.some((c) => c.id !== exceptId && c.name.toLowerCase() === name.toLowerCase());
 
   const handleAdd = () => {
     const name = newName.trim();
     if (!name) return;
-    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+    if (exists(name)) {
       showToast({ type: "error", msg: "Bu kategoriya allaqachon mavjud!" });
       return;
     }
@@ -39,21 +58,49 @@ const ManageCategoriesModal = ({
     });
   };
 
-  const handleDelete = (id: number, name: string) => {
+  const handleRename = (cat: Category) => {
+    if (!editing) return;
+    const name = editing.name.trim();
+    if (!name || name === cat.name) {
+      setEditing(null);
+      return;
+    }
+    if (exists(name, cat.id)) {
+      showToast({ type: "error", msg: "Bu nomdagi kategoriya allaqachon mavjud!" });
+      return;
+    }
+    renameCategory.mutate(
+      { id: cat.id, name },
+      {
+        onSuccess: () => {
+          setEditing(null);
+          showToast({ type: "success", msg: `"${cat.name}" → "${name}"` });
+        },
+        onError: (e) => showToast({ type: "error", msg: `Xatolik: ${e.message}` }),
+      }
+    );
+  };
+
+  const handleDelete = () => {
+    if (!deleting) return;
+    const { id, name } = deleting;
     deleteCategory.mutate(id, {
       onSuccess: () => showToast({ type: "success", msg: `"${name}" o'chirildi` }),
-      onError: (e) => showToast({ type: "error", msg: `Xatolik: ${e.message}` }),
+      onError: (e) => showToast({ type: "error", msg: e.message }),
+      onSettled: () => setDeleting(null),
     });
   };
 
-  const inputCls = `flex-1 px-4 py-2.5 rounded-xl text-sm outline-none border transition-all
+  const inputCls = `flex-1 min-w-0 px-4 py-2.5 rounded-xl text-sm outline-none border transition-all
     ${isDark
       ? "bg-gray-900 text-white placeholder-gray-500 border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
       : "bg-gray-50 text-gray-800 placeholder-gray-400 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
     }`;
+  const iconBtn = "p-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-40";
+  const deletingCount = deleting ? counts.get(deleting.name) ?? 0 : 0;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-110 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div
@@ -77,6 +124,7 @@ const ManageCategoriesModal = ({
           </h2>
           <button
             onClick={onClose}
+            title="Yopish"
             className={`p-1.5 rounded-xl transition-colors ${isDark ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}
           >
             <X size={18} />
@@ -143,36 +191,103 @@ const ManageCategoriesModal = ({
               Kategoriyalar topilmadi
             </p>
           ) : (
-            categories.map((cat) => (
-              <div
-                key={cat.id}
-                className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border transition-colors
-                  ${isDark ? "bg-gray-700/50 border-gray-600" : "bg-gray-50 border-gray-100"}`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                  <span className={`text-sm font-medium truncate ${isDark ? "text-gray-200" : "text-gray-700"}`}>
-                    {cat.name}
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleDelete(cat.id, cat.name)}
-                  disabled={deleteCategory.isPending && deleteCategory.variables === cat.id}
-                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20
-                    hover:text-red-500 transition-colors shrink-0 disabled:opacity-40"
-                  title="O'chirish"
+            categories.map((cat) => {
+              const isEditing = editing?.id === cat.id;
+              const renaming = renameCategory.isPending && renameCategory.variables?.id === cat.id;
+              return (
+                <div
+                  key={cat.id}
+                  className={`flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border transition-colors
+                    ${isDark ? "bg-gray-700/50 border-gray-600" : "bg-gray-50 border-gray-100"}`}
                 >
-                  {deleteCategory.isPending && deleteCategory.variables === cat.id ? (
-                    <Loader2 size={14} className="animate-spin" />
+                  {isEditing ? (
+                    <>
+                      <input
+                        autoFocus
+                        value={editing.name}
+                        maxLength={60}
+                        aria-label="Kategoriya nomi"
+                        onChange={(e) => setEditing({ id: cat.id, name: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && handleRename(cat)}
+                        className={`${inputCls} py-1.5! px-3!`}
+                      />
+                      <button
+                        onClick={() => handleRename(cat)}
+                        disabled={renaming || !editing.name.trim()}
+                        title="Saqlash"
+                        className={`${iconBtn} text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20`}
+                      >
+                        {renaming ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                      </button>
+                      <button
+                        onClick={() => setEditing(null)}
+                        disabled={renaming}
+                        title="Bekor qilish"
+                        className={`${iconBtn} text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600`}
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
                   ) : (
-                    <Trash2 size={14} />
+                    <>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                        <span className={`text-sm font-medium truncate ${isDark ? "text-gray-200" : "text-gray-700"}`}>
+                          {cat.name}
+                        </span>
+                        <span className={`text-xs shrink-0 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+                          {counts.get(cat.name) ?? 0} ta
+                        </span>
+                      </div>
+                      <div className="flex items-center shrink-0">
+                        <button
+                          onClick={() => setEditing({ id: cat.id, name: cat.name })}
+                          title="Nomini o'zgartirish"
+                          className={`${iconBtn} text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-500`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => setDeleting(cat)}
+                          title="O'chirish"
+                          className={`${iconBtn} text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </>
                   )}
-                </button>
-              </div>
-            ))
+                </div>
+              );
+            })
           )}
         </div>
       </div>
+
+      {deleting && (
+        <ConfirmDialog
+          isDark={isDark}
+          danger
+          title="Kategoriyani o'chirish"
+          message={
+            deletingCount > 0 ? (
+              <>
+                <b>"{deleting.name}"</b> kategoriyasida <b>{deletingCount} ta mahsulot</b> bor. Uni o'chirish uchun
+                avval bu mahsulotlarni boshqa kategoriyaga o'tkazing.
+              </>
+            ) : (
+              <>
+                <b>"{deleting.name}"</b> kategoriyasi o'chiriladi. Unda mahsulotlar yo'q.
+              </>
+            )
+          }
+          confirmLabel="O'chirish"
+          confirmDisabled={deletingCount > 0}
+          loading={deleteCategory.isPending}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
     </div>
   );
 };

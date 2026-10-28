@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import type { Profile, UserRole } from "../data/products";
@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;       // auth + profile ikkalasi ham tugadi
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,7 +22,10 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signInWithGoogle: async () => { },
   signOut: async () => { },
+  refreshProfile: async () => { },
 });
+
+const PROFILE_COLUMNS = "id, full_name, email, role, created_at, updated_at";
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -35,7 +39,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email, role, created_at, updated_at")
+        .select(PROFILE_COLUMNS)
         .eq("id", userId)
         .maybeSingle();
 
@@ -44,16 +48,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // Agar trigger ishlamagan bo'lsa, fallback: app tomondan yaratamiz
+      // (RLS faqat o'ziga va faqat 'mehmon' roli bilan ruxsat beradi — 03_improvements.sql)
       if (!data && userMeta) {
         const { data: inserted, error: insertError } = await supabase
           .from("profiles")
-          .upsert({
+          .insert({
             id: userId,
-            full_name: userMeta.full_name ?? "",
+            full_name: userMeta.full_name || userMeta.email?.split("@")[0] || "Foydalanuvchi",
             email: userMeta.email ?? null,
             role: "mehmon",
-          }, { onConflict: "id" })
-          .select("id, full_name, email, role, created_at, updated_at")
+          })
+          .select(PROFILE_COLUMNS)
           .maybeSingle();
 
         if (insertError) console.error("[Auth] Profil yaratish xatosi:", insertError.message);
@@ -69,6 +74,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  /** Profil o'zgargandan keyin (masalan ism) qayta yuklash */
+  const refreshProfile = useCallback(async () => {
+    const uid = lastUserId.current;
+    if (!uid) return;
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(PROFILE_COLUMNS)
+      .eq("id", uid)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) setProfile(data as Profile);
+  }, []);
 
   useEffect(() => {
     // onAuthStateChange birinchi bo'lib INITIAL_SESSION hodisasini yuboradi,
@@ -129,6 +146,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         loading,
         signInWithGoogle,
         signOut,
+        refreshProfile,
       }}
     >
       {children}

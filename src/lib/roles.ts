@@ -19,5 +19,4 @@ export const can = {
   seeCost: (r: UserRole | null) => r === "ega" || r === "pro_admin" || r === "admin",
   addProduct: (r: UserRole | null) => r === "ega" || r === "pro_admin",
   editProduct: (r: UserRole | null) => r === "ega" || r === "pro_admin",
-  manageUsers: (r: UserRole | null) => r === "ega",
 };

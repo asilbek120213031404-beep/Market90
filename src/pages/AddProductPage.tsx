@@ -1,9 +1,13 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
-import { useCategories } from "../hooks/useCategories";
 import { useCreateProduct } from "../hooks/useProducts";
+import { useToast } from "../hooks/useToast";
 import { toLocalDateTimeString } from "../lib/format";
+import { useProductForm, type ProductFormState } from "../components/product/useProductForm";
+import ImageField from "../components/product/ImageField";
+import PriceInput from "../components/product/PriceInput";
+import ProfitIndicator from "../components/product/ProfitIndicator";
+import CategorySelect from "../components/product/CategorySelect";
 import {
   Image,
   Package,
@@ -15,111 +19,34 @@ import {
   XCircle,
   Loader2,
   Check,
-  X,
-  TrendingUp,
-  TrendingDown,
   ArrowLeft,
   RotateCcw,
 } from "lucide-react";
-
-
-interface FormState {
-  name: string;
-  description: string;
-  category: string;
-  image_url: string;
-  cost_price: string;
-  selling_price: string;
-  created_at: string;
-}
 
 const AddProductPage = () => {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
   const createProduct = useCreateProduct();
-  const { data: dbCategories = [] } = useCategories();
-
-
-  const [form, setForm] = useState<FormState>({
-    name: "",
-    description: "",
-    category: "",
-    image_url: "",
-    cost_price: "",
-    selling_price: "",
-    created_at: toLocalDateTimeString(new Date()),
-  });
-
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const { form, errors, set, validate, toFields } = useProductForm();
+  const { toast, showToast } = useToast(1500);
   const submitting = createProduct.isPending;
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-  const [imagePreviewError, setImagePreviewError] = useState(false);
-
-  /* ─── helpers ─── */
-  const set = (field: keyof FormState, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => ({ ...prev, [field]: undefined }));
-  };
-
-  const profit = () => {
-    const cost = parseFloat(form.cost_price);
-    const sell = parseFloat(form.selling_price);
-    if (!isNaN(cost) && !isNaN(sell) && cost > 0) {
-      const diff = sell - cost;
-      const pct = Math.round((diff / cost) * 100);
-      return { diff, pct };
-    }
-    return null;
-  };
-
-  /* ─── validation ─── */
-  const validate = () => {
-    const e: Partial<Record<keyof FormState, string>> = {};
-    if (!form.name.trim()) e.name = "Nomi majburiy";
-    if (!form.category) e.category = "Tur tanlang";
-    if (!form.cost_price || isNaN(Number(form.cost_price)) || Number(form.cost_price) <= 0)
-      e.cost_price = "To'g'ri narx kiriting";
-    if (!form.selling_price || isNaN(Number(form.selling_price)) || Number(form.selling_price) <= 0)
-      e.selling_price = "To'g'ri narx kiriting";
-    if (!form.created_at) e.created_at = "Vaqt majburiy";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
 
   /* ─── submit ─── */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
-    createProduct.mutate(
-      {
-        name: form.name.trim(),
-        description: form.description.trim() || null,
-        category: form.category,
-        image_url: form.image_url.trim() || null,
-        cost_price: Number(form.cost_price),
-        selling_price: Number(form.selling_price),
-        created_at: new Date(form.created_at).toISOString(),
-      },
-      {
-        onError: (error) => {
-          setToast({ type: "error", msg: `Xatolik: ${error.message}` });
-          setTimeout(() => setToast(null), 5000);
-        },
-        onSuccess: () => {
-          setToast({ type: "success", msg: "Mahsulot muvaffaqiyatli qo'shildi!" });
-          setTimeout(() => {
-            setToast(null);
-            navigate("/products");
-          }, 1500);
-        },
-      }
-    );
+    createProduct.mutate(toFields(), {
+      onError: (error) => showToast({ type: "error", msg: `Xatolik: ${error.message}` }),
+      // Toast tugagach o'tamiz; sahifadan oldin chiqib ketilsa taymer bekor bo'ladi
+      onSuccess: () =>
+        showToast({ type: "success", msg: "Mahsulot muvaffaqiyatli qo'shildi!" }, () => navigate("/products")),
+    });
   };
 
   /* ─── input class ─── */
-  const inputCls = (field: keyof FormState) =>
+  const inputCls = (field: keyof ProductFormState) =>
     `w-full px-4 py-2.5 rounded-xl text-sm outline-none border transition-all duration-200
     ${isDark
       ? "bg-gray-900 text-white placeholder-gray-500"
@@ -133,7 +60,7 @@ const AddProductPage = () => {
     }`;
 
   const labelCls = `flex items-center gap-1.5 text-sm font-medium mb-1.5 ${isDark ? "text-gray-300" : "text-gray-700"}`;
-  const profitData = profit();
+  const unitCls = `absolute right-3 top-1/2 -translate-y-1/2 text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`;
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
@@ -141,6 +68,7 @@ const AddProductPage = () => {
       {/* ── Toast ── */}
       {toast && (
         <div
+          role="status"
           className={`fixed top-6 right-6 z-50 px-5 py-3.5 rounded-2xl shadow-xl text-sm font-semibold flex items-center gap-3
             transition-all duration-300
             ${toast.type === "success"
@@ -174,46 +102,33 @@ const AddProductPage = () => {
           ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}
         >
 
-          {/* Image URL */}
+          {/* Image */}
           <div>
-            <label className={labelCls}>
+            <label htmlFor="add-image" className={labelCls}>
               <Image size={15} />
-              Rasm URL
+              Rasm
               <span className={`text-xs font-normal ml-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-                (ixtiyoriy)
+                (ixtiyoriy — URL yoki fayl)
               </span>
             </label>
-            <input
-              type="url"
-              placeholder="https://example.com/image.jpg"
+            <ImageField
+              id="add-image"
               value={form.image_url}
-              onChange={(e) => { set("image_url", e.target.value); setImagePreviewError(false); }}
-              className={inputCls("image_url")}
+              onChange={(url) => set("image_url", url)}
+              inputClassName={inputCls("image_url")}
+              isDark={isDark}
+              showPreview
             />
-            {form.image_url && !imagePreviewError && (
-              <div className="mt-3 rounded-xl overflow-hidden h-40 border border-gray-200">
-                <img
-                  src={form.image_url}
-                  alt="preview"
-                  className="w-full h-full object-cover"
-                  onError={() => setImagePreviewError(true)}
-                />
-              </div>
-            )}
-            {form.image_url && imagePreviewError && (
-              <p className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
-                <X size={13} /> Rasm yuklanmadi — URL ni tekshiring
-              </p>
-            )}
           </div>
 
           {/* Name */}
           <div>
-            <label className={labelCls}>
+            <label htmlFor="add-name" className={labelCls}>
               <Package size={15} />
               Nomi <span className="text-red-400">*</span>
             </label>
             <input
+              id="add-name"
               type="text"
               placeholder="Mahsulot nomi"
               value={form.name}
@@ -225,7 +140,7 @@ const AddProductPage = () => {
 
           {/* Description */}
           <div>
-            <label className={labelCls}>
+            <label htmlFor="add-description" className={labelCls}>
               <FileText size={15} />
               Tavsif
               <span className={`text-xs font-normal ml-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
@@ -233,6 +148,7 @@ const AddProductPage = () => {
               </span>
             </label>
             <textarea
+              id="add-description"
               rows={3}
               placeholder="Mahsulot haqida qisqacha ma'lumot..."
               value={form.description}
@@ -243,20 +159,16 @@ const AddProductPage = () => {
 
           {/* Category */}
           <div>
-            <label className={labelCls}>
+            <label htmlFor="add-category" className={labelCls}>
               <Tag size={15} />
               Tur <span className="text-red-400">*</span>
             </label>
-            <select
+            <CategorySelect
+              id="add-category"
               value={form.category}
-              onChange={(e) => set("category", e.target.value)}
-              className={`${inputCls("category")} cursor-pointer`}
-            >
-              <option value="">— Kategoriya tanlang —</option>
-              {dbCategories.map((cat) => (
-                <option key={cat.id} value={cat.name}>{cat.name}</option>
-              ))}
-            </select>
+              onChange={(name) => set("category", name)}
+              className={inputCls("category")}
+            />
             {errors.category && <p className="mt-1 text-xs text-red-400">{errors.category}</p>}
           </div>
         </div>
@@ -271,81 +183,44 @@ const AddProductPage = () => {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Cost price */}
             <div>
-              <label className={labelCls}>Tan narxi (so'm) <span className="text-red-400">*</span></label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={form.cost_price}
-                  onChange={(e) => set("cost_price", e.target.value)}
-                  className={`${inputCls("cost_price")} pr-14`}
-                />
-                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-                  so'm
-                </span>
-              </div>
+              <label htmlFor="add-cost" className={labelCls}>Tan narxi (so'm) <span className="text-red-400">*</span></label>
+              <PriceInput
+                id="add-cost"
+                value={form.cost_price}
+                onChange={(v) => set("cost_price", v)}
+                className={inputCls("cost_price")}
+                unitClassName={unitCls}
+              />
               {errors.cost_price && <p className="mt-1 text-xs text-red-400">{errors.cost_price}</p>}
             </div>
 
-            {/* Selling price */}
             <div>
-              <label className={labelCls}>Sotilish narxi (so'm) <span className="text-red-400">*</span></label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={form.selling_price}
-                  onChange={(e) => set("selling_price", e.target.value)}
-                  className={`${inputCls("selling_price")} pr-14`}
-                />
-                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-                  so'm
-                </span>
-              </div>
+              <label htmlFor="add-sell" className={labelCls}>Sotilish narxi (so'm) <span className="text-red-400">*</span></label>
+              <PriceInput
+                id="add-sell"
+                value={form.selling_price}
+                onChange={(v) => set("selling_price", v)}
+                className={inputCls("selling_price")}
+                unitClassName={unitCls}
+              />
               {errors.selling_price && <p className="mt-1 text-xs text-red-400">{errors.selling_price}</p>}
             </div>
           </div>
 
-          {/* Live profit indicator */}
-          {profitData && (
-            <div className={`rounded-xl px-4 py-3 flex items-center justify-between
-              ${profitData.diff >= 0
-                ? isDark ? "bg-emerald-900/30 border border-emerald-800" : "bg-emerald-50 border border-emerald-100"
-                : isDark ? "bg-red-900/30 border border-red-800" : "bg-red-50 border border-red-100"
-              }`}
-            >
-              <span className={`flex items-center gap-1.5 text-sm font-medium ${profitData.diff >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                {profitData.diff >= 0
-                  ? <TrendingUp size={16} />
-                  : <TrendingDown size={16} />
-                }
-                {profitData.diff >= 0 ? "Foyda" : "Zarar"}
-              </span>
-              <div className="text-right">
-                <p className={`font-bold text-sm ${profitData.diff >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {profitData.diff >= 0 ? "+" : ""}{profitData.diff.toLocaleString("uz-UZ")} so'm
-                </p>
-                <p className={`text-xs ${profitData.diff >= 0 ? "text-emerald-500" : "text-red-400"}`}>
-                  {profitData.diff >= 0 ? "+" : ""}{profitData.pct}%
-                </p>
-              </div>
-            </div>
-          )}
+          <ProfitIndicator cost={form.cost_price} sell={form.selling_price} isDark={isDark} />
         </div>
 
         {/* ── Date card ── */}
         <div className={`rounded-2xl p-6 shadow-sm border
           ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}
         >
-          <label className={labelCls}>
+          <label htmlFor="add-date" className={labelCls}>
             <Clock size={15} />
             Qo'shilgan vaqti <span className="text-red-400">*</span>
           </label>
           <input
+            id="add-date"
             type="datetime-local"
             value={form.created_at}
             onChange={(e) => set("created_at", e.target.value)}

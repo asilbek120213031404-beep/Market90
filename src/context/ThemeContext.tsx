@@ -12,23 +12,33 @@ const ThemeContext = createContext<ThemeContextType>({
   toggleTheme: () => {},
 });
 
+// Private rejimda yoki bloklangan saytda localStorage xato berishi mumkin
+const readSaved = (): Theme | null => {
+  try {
+    const saved = localStorage.getItem("theme");
+    return saved === "light" || saved === "dark" ? saved : null;
+  } catch {
+    return null;
+  }
+};
+
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "light" || saved === "dark") return saved;
+    const saved = readSaved();
+    if (saved) return saved;
     return window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
       : "light";
   });
 
+  // `dark` klassi Tailwind'ning `dark:` variantini boshqaradi (index.css → @custom-variant)
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {
+      /* saqlab bo'lmasa ham mavzu ishlayveradi */
     }
-    localStorage.setItem("theme", theme);
   }, [theme]);
 
   const toggleTheme = () =>

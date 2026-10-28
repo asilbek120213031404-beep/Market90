@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `dark:` varianti OS sozlamasiga emas, ilova mavzusiga (<html class="dark">) bog'langan */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @keyframes page-enter {
   from {
     opacity: 0;

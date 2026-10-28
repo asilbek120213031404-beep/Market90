@@ -1,19 +1,50 @@
 import { useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { type ProductListItem } from "../data/products";
 import { useCategories } from "../hooks/useCategories";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
+import { useDebounce } from "../hooks/useDebounce";
 import { can } from "../lib/roles";
-import { calcProfit, categoryClass, profitBadgeClass } from "../lib/format";
+import { calcProfit, categoryClass, formatPct, formatPrice, groupDigits, profitBadgeClass } from "../lib/format";
+import Pagination from "../components/Pagination";
 import {
   Search,
   ImageOff,
   AlertTriangle,
   RefreshCw,
   SearchX,
+  ArrowUpDown,
+  X,
 } from "lucide-react";
 import clsx from "clsx";
+
+const PAGE_SIZE = 25;
+
+type SortKey = "new" | "old" | "name" | "price_asc" | "price_desc" | "profit_desc" | "profit_asc";
+
+const SORT_OPTIONS: { value: SortKey; label: string; staffOnly?: boolean }[] = [
+  { value: "new", label: "Eng yangilari" },
+  { value: "old", label: "Eng eskilari" },
+  { value: "name", label: "Nomi (A–Z)" },
+  { value: "price_asc", label: "Arzonroq" },
+  { value: "price_desc", label: "Qimmatroq" },
+  { value: "profit_desc", label: "Foyda: ko'pi oldin", staffOnly: true },
+  { value: "profit_asc", label: "Foyda: kami oldin", staffOnly: true },
+];
+
+const profitPct = (p: ProductListItem) => calcProfit(p.cost_price ?? 0, p.selling_price)?.pct ?? 0;
+
+const SORTERS: Record<SortKey, (a: ProductListItem, b: ProductListItem) => number> = {
+  new: (a, b) => b.created_at.localeCompare(a.created_at),
+  old: (a, b) => a.created_at.localeCompare(b.created_at),
+  name: (a, b) => a.name.localeCompare(b.name, "uz"),
+  price_asc: (a, b) => a.selling_price - b.selling_price,
+  price_desc: (a, b) => b.selling_price - a.selling_price,
+  profit_desc: (a, b) => profitPct(b) - profitPct(a),
+  profit_asc: (a, b) => profitPct(a) - profitPct(b),
+};
 
 /* ─── Product Row ─── */
 const ProductRow = ({
@@ -28,7 +59,7 @@ const ProductRow = ({
   showCostPrice: boolean;
 }) => {
   const cost = product.cost_price ?? 0;
-  const profitPercent = calcProfit(cost, product.selling_price)?.pct ?? 0;
+  const profitPercent = profitPct(product);
   const catClass = categoryClass(product.category);
 
   return (
@@ -49,6 +80,7 @@ const ProductRow = ({
             <img
               src={product.image_url}
               alt={product.name}
+              loading="lazy"
               className={clsx('w-full', 'h-full', 'object-cover', 'group-hover:scale-110', 'transition-transform', 'duration-300')}
               onError={(e) => {
                 (e.target as HTMLImageElement).src =
@@ -82,18 +114,18 @@ const ProductRow = ({
 
       {showCostPrice && (
         <td className={`px-4 py-3 text-right text-sm whitespace-nowrap ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-          {cost.toLocaleString("uz-UZ")} <span className="text-xs">so'm</span>
+          {formatPrice(cost)}
         </td>
       )}
 
       <td className={`px-4 py-3 text-right text-sm font-bold whitespace-nowrap ${isDark ? "text-white" : "text-gray-900"}`}>
-        {product.selling_price.toLocaleString("uz-UZ")} <span className={clsx('text-xs', 'font-normal')}>so'm</span>
+        {formatPrice(product.selling_price)}
       </td>
 
       {showCostPrice && (
       <td className={clsx('px-4', 'py-3', 'text-right')}>
         <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${profitBadgeClass(profitPercent)}`}>
-          +{profitPercent}%
+          {formatPct(profitPercent)}
         </span>
       </td>
       )}
@@ -141,42 +173,116 @@ const HomePage = () => {
   const showCostPrice = can.seeCost(role);
   const { products, loading, error, refetch } = useProducts({ includeCost: showCostPrice });
   const { data: dbCategories = [] } = useCategories();
-  const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState("Barchasi");
+
+  // Filtrlar URL'da: ?q=&cat=&sort=&min=&max=&page= — havolani ulashish mumkin
+  const [params, setParams] = useSearchParams();
+  const [searchInput, setSearchInput] = useState(params.get("q") ?? "");
+  const search = useDebounce(searchInput.trim().toLowerCase());
+  const activeCategory = params.get("cat") ?? "Barchasi";
+  const sortParam = params.get("sort") as SortKey | null;
+  const sort: SortKey =
+    sortParam && SORT_OPTIONS.some((o) => o.value === sortParam && (!o.staffOnly || showCostPrice))
+      ? sortParam
+      : "new";
+  const minPrice = params.get("min") ?? "";
+  const maxPrice = params.get("max") ?? "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+
+  const updateParams = (patch: Record<string, string | null>, resetPage = true) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v) next.set(k, v);
+          else next.delete(k);
+        }
+        if (resetPage) next.delete("page");
+        return next;
+      },
+      { replace: true }
+    );
+
+  const handleSearch = (value: string) => {
+    setSearchInput(value);
+    updateParams({ q: value.trim() || null });
+  };
 
   // "Barchasi" + Supabase kategoriyalari
   const allCategories = ["Barchasi", ...dbCategories.map((c) => c.name)];
 
-
   const filtered = useMemo(() => {
-    let list = [...products];
-    if (activeCategory !== "Barchasi") {
-      list = list.filter((p) => p.category === activeCategory);
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((p) => p.name.toLowerCase().includes(q));
-    }
-    return list;
-  }, [products, search, activeCategory]);
+    const min = Number(minPrice) || 0;
+    const max = Number(maxPrice) || Infinity;
+    return products
+      .filter((p) => activeCategory === "Barchasi" || p.category === activeCategory)
+      .filter(
+        (p) =>
+          !search ||
+          p.name.toLowerCase().includes(search) ||
+          (p.description ?? "").toLowerCase().includes(search)
+      )
+      .filter((p) => p.selling_price >= min && p.selling_price <= max)
+      .sort(SORTERS[sort]);
+  }, [products, search, activeCategory, minPrice, maxPrice, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const offset = (currentPage - 1) * PAGE_SIZE;
+  const visible = filtered.slice(offset, offset + PAGE_SIZE);
+
+  const hasFilters = !!(searchInput || activeCategory !== "Barchasi" || minPrice || maxPrice || sort !== "new");
+
+  const fieldCls = `py-2.5 rounded-xl text-sm outline-none border transition-colors ${
+    isDark
+      ? "bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-blue-500"
+      : "bg-white border-gray-200 text-gray-800 placeholder-gray-400 focus:border-blue-500"
+  }`;
+
+  const priceField = (key: "min" | "max", value: string, placeholder: string) => (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label={placeholder}
+      placeholder={placeholder}
+      value={groupDigits(value)}
+      onChange={(e) => updateParams({ [key]: e.target.value.replace(/\D/g, "") || null })}
+      className={`${fieldCls} w-full sm:w-32 px-3`}
+    />
+  );
 
   return (
     <section className={clsx('max-w-7xl', 'mx-auto', 'px-4', 'sm:px-6', 'lg:px-8', 'py-8')}>
 
-      <div className={clsx('flex', 'flex-col', 'sm:flex-row', 'gap-3', 'mb-6')}>
+      <div className={clsx('flex', 'flex-col', 'lg:flex-row', 'gap-3', 'mb-6')}>
         <div className={clsx('relative', 'flex-1')}>
           <Search size={16} className={clsx('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'text-gray-400')} />
           <input
-            type="text"
-            placeholder="Mahsulot qidirish..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none border transition-colors ${
-              isDark
-                ? "bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-blue-500"
-                : "bg-white border-gray-200 text-gray-800 placeholder-gray-400 focus:border-blue-500"
-            }`}
+            type="search"
+            placeholder="Nomi yoki tavsifi bo'yicha qidirish..."
+            value={searchInput}
+            onChange={(e) => handleSearch(e.target.value)}
+            className={`${fieldCls} w-full pl-10 pr-4`}
           />
+        </div>
+
+        <div className="flex gap-2 items-center">
+          {priceField("min", minPrice, "Narx: dan")}
+          <span className="text-gray-400">—</span>
+          {priceField("max", maxPrice, "Narx: gacha")}
+        </div>
+
+        <div className="relative">
+          <ArrowUpDown size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <select
+            aria-label="Saralash"
+            value={sort}
+            onChange={(e) => updateParams({ sort: e.target.value === "new" ? null : e.target.value })}
+            className={`${fieldCls} w-full lg:w-52 pl-9 pr-3 cursor-pointer`}
+          >
+            {SORT_OPTIONS.filter((o) => !o.staffOnly || showCostPrice).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -184,7 +290,7 @@ const HomePage = () => {
         {allCategories.map((cat) => (
           <button
             key={cat}
-            onClick={() => setActiveCategory(cat)}
+            onClick={() => updateParams({ cat: cat === "Barchasi" ? null : cat })}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
               activeCategory === cat
                 ? "bg-blue-600 text-white shadow-md shadow-blue-600/30"
@@ -196,6 +302,19 @@ const HomePage = () => {
             {cat}
           </button>
         ))}
+        {hasFilters && (
+          <button
+            onClick={() => {
+              setSearchInput("");
+              setParams({}, { replace: true });
+            }}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              isDark ? "text-red-400 hover:bg-gray-800" : "text-red-500 hover:bg-red-50"
+            }`}
+          >
+            <X size={14} /> Filtrlarni tozalash
+          </button>
+        )}
       </div>
 
       {!loading && error && (
@@ -226,6 +345,7 @@ const HomePage = () => {
             {!loading && (
               <p className={`text-xs mb-3 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
                 {filtered.length} ta mahsulot topildi
+                {totalPages > 1 && ` · ${offset + 1}–${offset + visible.length} ko'rsatilmoqda`}
               </p>
             )}
 
@@ -256,11 +376,11 @@ const HomePage = () => {
                       ? Array.from({ length: 8 }).map((_, i) => (
                           <SkeletonRow key={i} isDark={isDark} showCostPrice={showCostPrice} />
                         ))
-                      : filtered.map((product, i) => (
+                      : visible.map((product, i) => (
                           <ProductRow
                             key={product.id}
                             product={product}
-                            index={i}
+                            index={offset + i}
                             isDark={isDark}
                             showCostPrice={showCostPrice}
                           />
@@ -270,6 +390,15 @@ const HomePage = () => {
                 </table>
               </div>
             </div>
+
+            {!loading && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                isDark={isDark}
+                onChange={(p) => updateParams({ page: p > 1 ? String(p) : null }, false)}
+              />
+            )}
           </>
         )
       )}

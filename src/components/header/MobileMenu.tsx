@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LogOut, Users } from "lucide-react";
+import { LogOut, Tag } from "lucide-react";
 import type { NavItem } from "./navItems";
 import { Avatar, type UserInfo } from "./UserMenu";
 
@@ -8,24 +8,24 @@ const MobileMenu = ({
   open,
   isDark,
   links,
-  canManageUsers,
+  canManageCategories,
   info,
   onClose,
-  onManageUsers,
+  onManageCategories,
   onSignOut,
 }: {
   open: boolean;
   isDark: boolean;
   links: readonly NavItem[];
-  canManageUsers: boolean;
+  canManageCategories: boolean;
   info: UserInfo;
   onClose: () => void;
-  onManageUsers: () => void;
+  onManageCategories: () => void;
   onSignOut: () => void;
 }) => (
   <div
-    className={`md:hidden overflow-hidden transition-all duration-300 ${
-      open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+    className={`lg:hidden overflow-hidden transition-all duration-300 ${
+      open ? "max-h-[32rem] opacity-100" : "max-h-0 opacity-0"
     } ${isDark ? "bg-gray-800/97" : "bg-blue-800/95"} backdrop-blur-sm`}
   >
     <nav className="flex flex-col px-6 py-4 gap-4">
@@ -45,16 +45,16 @@ const MobileMenu = ({
         </NavLink>
       ))}
 
-      {canManageUsers && (
+      {canManageCategories && (
         <button
           onClick={() => {
-            onManageUsers();
+            onManageCategories();
             onClose();
           }}
-          className="flex items-center gap-2 text-blue-200 text-sm font-semibold hover:text-white transition-colors w-fit"
+          className="flex items-center gap-2 text-emerald-200 text-sm font-semibold hover:text-white transition-colors w-fit"
         >
-          <Users size={15} />
-          Foydalanuvchilar
+          <Tag size={15} />
+          Kategoriyalar
         </button>
       )}
 
@@ -64,8 +64,10 @@ const MobileMenu = ({
       >
         <Avatar info={info} className="w-8 h-8 rounded-full border border-white/40" />
         <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-semibold truncate">{info.displayName.split(" ")[0]}</p>
-          <p className="text-white/60 text-xs truncate">{info.email}</p>
+          <p className={`text-sm font-semibold truncate ${isDark ? "text-white" : "text-gray-800"}`}>
+            {info.displayName.split(" ")[0]}
+          </p>
+          <p className={`text-xs truncate ${isDark ? "text-white/60" : "text-gray-500"}`}>{info.email}</p>
         </div>
         <button
           onClick={() => {
@@ -74,6 +76,7 @@ const MobileMenu = ({
           }}
           className="text-red-400 hover:text-red-300 transition-colors"
           title="Chiqish"
+          aria-label="Chiqish"
         >
           <LogOut size={16} />
         </button>

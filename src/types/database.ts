@@ -66,7 +66,7 @@ export type Database = {
       };
       products: {
         Row: {
-          id: number;
+          id: string;
           name: string;
           description: string | null;
           category: string;
@@ -78,7 +78,7 @@ export type Database = {
           updated_at: string | null;
         };
         Insert: {
-          id?: number;
+          id?: string;
           name: string;
           description?: string | null;
           category: string;
@@ -90,7 +90,7 @@ export type Database = {
           updated_at?: string | null;
         };
         Update: {
-          id?: number;
+          id?: string;
           name?: string;
           description?: string | null;
           category?: string;
@@ -103,11 +103,26 @@ export type Database = {
         };
         Relationships: [];
       };
+      product_history: {
+        Row: {
+          id: number;
+          product_id: string;
+          product_name: string;
+          action: "insert" | "update" | "delete";
+          changes: Json;
+          changed_by: string | null;
+          changed_by_name: string | null;
+          changed_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     Views: {
       products_public: {
         Row: {
-          id: number;
+          id: string;
           name: string;
           description: string | null;
           category: string;
@@ -122,6 +137,17 @@ export type Database = {
     };
     Functions: {
       app_role: { Args: Record<PropertyKey, never>; Returns: string };
+      admin_activity: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          user_id: string;
+          full_name: string;
+          email: string | null;
+          role: string;
+          edit_count: number;
+          last_edits: Json;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

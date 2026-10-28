@@ -30,9 +30,9 @@ const GoogleIcon = () => (
 const FloatingShapes = ({ isDark }: { isDark: boolean }) => (
   <div className={clsx('absolute', 'inset-0', 'overflow-hidden', 'pointer-events-none')}>
     {[
-      { size: "w-72 h-72", pos: "-top-16 -left-16", opacity: "opacity-20", delay: "" },
-      { size: "w-96 h-96", pos: "-bottom-24 -right-24", opacity: "opacity-15", delay: "animation-delay-2000" },
-      { size: "w-48 h-48", pos: "top-1/2 left-1/3", opacity: "opacity-10", delay: "animation-delay-4000" },
+      { size: "w-72 h-72", pos: "-top-16 -left-16", opacity: "opacity-20" },
+      { size: "w-96 h-96", pos: "-bottom-24 -right-24", opacity: "opacity-15" },
+      { size: "w-48 h-48", pos: "top-1/2 left-1/3", opacity: "opacity-10" },
     ].map((shape, i) => (
       <div
         key={i}
