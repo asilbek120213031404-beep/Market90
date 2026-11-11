@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Upload, X } from "lucide-react";
 import { uploadProductImage } from "../../lib/storage";
 
@@ -26,12 +26,23 @@ const ImageField = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState(false);
 
+  // Yuklangan fayl uchun lokal preview — rasmni serverdan qayta yuklab olmaslik uchun
+  const [local, setLocal] = useState<{ url: string; objectUrl: string } | null>(null);
+
+  useEffect(() => () => {
+    if (local) URL.revokeObjectURL(local.objectUrl);
+  }, [local]);
+
+  const previewSrc = local && local.url === value ? local.objectUrl : value;
+
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
     setUploading(true);
     setUploadError(null);
     try {
-      onChange(await uploadProductImage(file));
+      const url = await uploadProductImage(file);
+      setLocal({ url, objectUrl: URL.createObjectURL(file) });
+      onChange(url);
       setPreviewError(false);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : String(e));
@@ -68,7 +79,7 @@ const ImageField = ({
             }`}
         >
           {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-          <span className="hidden sm:inline">{uploading ? "Yuklanmoqda" : "Yuklash"}</span>
+          <span className="hidden sm:inline">{uploading ? "Yuklanmoqda…" : "Yuklash"}</span>
         </button>
         <input
           ref={fileRef}
@@ -88,7 +99,7 @@ const ImageField = ({
       {showPreview && value && !previewError && (
         <div className={`mt-3 rounded-xl overflow-hidden h-40 border ${isDark ? "border-gray-700" : "border-gray-200"}`}>
           <img
-            src={value}
+            src={previewSrc}
             alt="preview"
             className="w-full h-full object-cover"
             onError={() => setPreviewError(true)}
